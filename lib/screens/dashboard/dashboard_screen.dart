@@ -30,9 +30,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _taskService = TaskService();
   final _notificationService = NotificationService();
   final _reportService = ReportService();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await Future.wait([
+      _projectService.refresh(),
+      _taskService.refresh(),
+      _notificationService.refresh(),
+      _reportService.refresh(),
+    ]);
+    if (mounted) setState(() => _loading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return AppScaffold(
+        title: 'Panel',
+        currentIndex: 0,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final projects = _projectService.getAllProjects();
     final activeProjects = _projectService.getProjectsByStatus(ProjectStatus.active);
     final upcomingTasks = _taskService.getUpcomingTasks(days: 14);
@@ -42,58 +67,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return AppScaffold(
       title: 'Panel',
       currentIndex: 0,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimens.spaceLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildWelcomeHeader(),
-            const SizedBox(height: AppDimens.spaceLg),
-            _buildMetricsRow(),
-            const SizedBox(height: AppDimens.spaceXl),
-            // Progress chart
-            _buildSectionTitle('Progreso por Proyecto'),
-            const SizedBox(height: AppDimens.spaceMd),
-            _buildProgressChart(projects),
-            const SizedBox(height: AppDimens.spaceXl),
-            // Two column layout
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionTitle('Proyectos Activos'),
-                      const SizedBox(height: AppDimens.spaceMd),
-                      _buildActiveProjects(activeProjects),
-                    ],
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() => _loading = true);
+          await _loadData();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppDimens.spaceLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWelcomeHeader(),
+              const SizedBox(height: AppDimens.spaceLg),
+              _buildMetricsRow(),
+              const SizedBox(height: AppDimens.spaceXl),
+              _buildSectionTitle('Progreso por Proyecto'),
+              const SizedBox(height: AppDimens.spaceMd),
+              _buildProgressChart(projects),
+              const SizedBox(height: AppDimens.spaceXl),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle('Proyectos Activos'),
+                        const SizedBox(height: AppDimens.spaceMd),
+                        _buildActiveProjects(activeProjects),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: AppDimens.spaceLg),
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionTitle('Próximas Tareas'),
-                      const SizedBox(height: AppDimens.spaceMd),
-                      _buildUpcomingTasks(upcomingTasks),
-                      const SizedBox(height: AppDimens.spaceXl),
-                      _buildSectionTitle('Actividad Reciente'),
-                      const SizedBox(height: AppDimens.spaceMd),
-                      _buildRecentNotifications(recentNotifications),
-                    ],
+                  const SizedBox(width: AppDimens.spaceLg),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle('Próximas Tareas'),
+                        const SizedBox(height: AppDimens.spaceMd),
+                        _buildUpcomingTasks(upcomingTasks),
+                        const SizedBox(height: AppDimens.spaceXl),
+                        _buildSectionTitle('Actividad Reciente'),
+                        const SizedBox(height: AppDimens.spaceMd),
+                        _buildRecentNotifications(recentNotifications),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppDimens.spaceXl),
-            _buildSectionTitle('Informes Recientes'),
-            const SizedBox(height: AppDimens.spaceMd),
-            _buildRecentReports(reports),
-          ],
+                ],
+              ),
+              const SizedBox(height: AppDimens.spaceXl),
+              _buildSectionTitle('Informes Recientes'),
+              const SizedBox(height: AppDimens.spaceMd),
+              _buildRecentReports(reports),
+            ],
+          ),
         ),
       ),
     );

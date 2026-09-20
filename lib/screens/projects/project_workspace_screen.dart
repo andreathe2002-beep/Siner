@@ -34,11 +34,23 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen>
   final _reportService = ReportService();
 
   late TabController _tabController;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await Future.wait([
+      _projectService.refresh(),
+      _taskService.refresh(),
+      _documentService.refresh(),
+      _reportService.refresh(),
+    ]);
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -49,6 +61,14 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return AppScaffold(
+        title: 'Proyecto',
+        currentIndex: 1,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final project = _projectService.getProjectById(widget.projectId);
 
     if (project == null) {
@@ -144,7 +164,6 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen>
             ),
           ),
           const SizedBox(height: AppDimens.spaceMd),
-          // Progress bar
           Row(
             children: [
               Text(
@@ -222,7 +241,6 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Budget chart
           const Text(
             'Presupuesto vs. Gastado',
             style: TextStyle(
@@ -254,7 +272,6 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen>
             ),
           ),
           const SizedBox(height: AppDimens.spaceXl),
-          // Recent reports
           const Text(
             'Informes del Proyecto',
             style: TextStyle(
@@ -330,10 +347,9 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen>
       itemBuilder: (_, i) {
         return TaskCard(
           task: tasks[i],
-          onStatusChanged: (status) {
-            setState(() {
-              _taskService.updateTaskStatus(tasks[i].id, status);
-            });
+          onStatusChanged: (status) async {
+            await _taskService.updateTaskStatus(tasks[i].id, status);
+            setState(() {});
           },
         );
       },

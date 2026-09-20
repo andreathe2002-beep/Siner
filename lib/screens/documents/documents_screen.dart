@@ -22,6 +22,19 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   final _projectService = ProjectService();
   DocumentType? _filterType;
   String _searchQuery = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await _documentService.refresh();
+    await _projectService.refresh();
+    if (mounted) setState(() => _loading = false);
+  }
 
   List<DocumentModel> get _filteredDocuments {
     var docs = _documentService.getAllDocuments();
@@ -39,6 +52,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return AppScaffold(
+        title: 'Documentos',
+        currentIndex: 3,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final docs = _filteredDocuments;
 
     return AppScaffold(
@@ -50,124 +71,131 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimens.spaceLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            LayoutBuilder(builder: (context, constraints) {
-              final count = constraints.maxWidth > 700 ? 3 : 1;
-              final spacing = AppDimens.spaceMd;
-              final w = (constraints.maxWidth - spacing * (count - 1)) / count;
-              return Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: [
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Total Documentos',
-                      value: '${_documentService.totalDocuments}',
-                      icon: Icons.description,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Almacenamiento',
-                      value: '${_documentService.totalSizeMb.toStringAsFixed(0)}MB',
-                      icon: Icons.cloud_outlined,
-                      color: AppColors.info,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Artículos',
-                      value: '${_documentService.getDocumentsByType(DocumentType.paper).length}',
-                      icon: Icons.article,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                ],
-              );
-            }),
-            const SizedBox(height: AppDimens.spaceXl),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Buscar documentos...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 20),
-                        onPressed: () => setState(() => _searchQuery = ''),
-                      )
-                    : null,
-              ),
-              onChanged: (v) => setState(() => _searchQuery = v),
-            ),
-            const SizedBox(height: AppDimens.spaceMd),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildFilterChip('Todos', null),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  ...DocumentType.values.map((type) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: AppDimens.spaceSm),
-                      child: _buildFilterChip(type.label, type),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppDimens.spaceLg),
-            if (docs.isEmpty)
-              const EmptyState(
-                icon: Icons.folder_off,
-                title: 'Sin documentos',
-                message: 'No se encontraron documentos con los filtros actuales.',
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: docs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: AppDimens.spaceSm),
-                itemBuilder: (_, i) {
-                  final doc = docs[i];
-                  final project = _projectService.getProjectById(doc.projectId);
-                  return Dismissible(
-                    key: Key(doc.id),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      decoration: BoxDecoration(
-                        color: AppColors.error,
-                        borderRadius: BorderRadius.circular(AppDimens.radiusL),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() => _loading = true);
+          await _loadData();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppDimens.spaceLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(builder: (context, constraints) {
+                final count = constraints.maxWidth > 700 ? 3 : 1;
+                final spacing = AppDimens.spaceMd;
+                final w = (constraints.maxWidth - spacing * (count - 1)) / count;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Total Documentos',
+                        value: '${_documentService.totalDocuments}',
+                        icon: Icons.description,
+                        color: AppColors.primary,
                       ),
-                      child: const Icon(Icons.delete, color: Colors.white),
                     ),
-                    onDismissed: (_) {
-                      setState(() => _documentService.deleteDocument(doc.id));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Documento "${doc.title}" eliminado'),
-                          backgroundColor: AppColors.error,
-                        ),
-                      );
-                    },
-                    child: DocumentCard(
-                      document: doc,
-                      projectTitle: project?.title,
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Almacenamiento',
+                        value: '${_documentService.totalSizeMb.toStringAsFixed(0)}MB',
+                        icon: Icons.cloud_outlined,
+                        color: AppColors.info,
+                      ),
                     ),
-                  );
-                },
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Artículos',
+                        value: '${_documentService.getDocumentsByType(DocumentType.paper).length}',
+                        icon: Icons.article,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                );
+              }),
+              const SizedBox(height: AppDimens.spaceXl),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Buscar documentos...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () => setState(() => _searchQuery = ''),
+                        )
+                      : null,
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
               ),
-          ],
+              const SizedBox(height: AppDimens.spaceMd),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildFilterChip('Todos', null),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    ...DocumentType.values.map((type) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: AppDimens.spaceSm),
+                        child: _buildFilterChip(type.label, type),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppDimens.spaceLg),
+              if (docs.isEmpty)
+                const EmptyState(
+                  icon: Icons.folder_off,
+                  title: 'Sin documentos',
+                  message: 'No se encontraron documentos con los filtros actuales.',
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: AppDimens.spaceSm),
+                  itemBuilder: (_, i) {
+                    final doc = docs[i];
+                    final project = _projectService.getProjectById(doc.projectId);
+                    return Dismissible(
+                      key: Key(doc.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          borderRadius: BorderRadius.circular(AppDimens.radiusL),
+                        ),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+                      onDismissed: (_) async {
+                        await _documentService.deleteDocument(doc.id);
+                        setState(() {});
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Documento "${doc.title}" eliminado'),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                      },
+                      child: DocumentCard(
+                        document: doc,
+                        projectTitle: project?.title,
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -277,7 +305,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   child: const Text('Cancelar'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     if (!formKey.currentState!.validate()) return;
                     final tags = tagsCtrl.text
                         .split(',')
@@ -286,7 +314,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         .toList();
                     final now = DateTime.now();
                     final doc = DocumentModel(
-                      id: 'd${now.millisecondsSinceEpoch}',
+                      id: 'temp',
                       projectId: selectedProjectId,
                       title: titleCtrl.text.trim(),
                       type: selectedType,
@@ -295,8 +323,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       createdAt: now,
                       updatedAt: now,
                     );
-                    _documentService.addDocument(doc);
-                    Navigator.pop(ctx);
+                    await _documentService.addDocument(doc);
+                    if (ctx.mounted) Navigator.pop(ctx);
                     setState(() {});
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(

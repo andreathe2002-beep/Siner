@@ -17,9 +17,29 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final _notificationService = NotificationService();
   bool _showUnreadOnly = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await _notificationService.refresh();
+    if (mounted) setState(() => _loading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return AppScaffold(
+        title: 'Notificaciones',
+        currentIndex: 5,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final all = _notificationService.getAllNotifications();
     final unread = _notificationService.getUnreadNotifications();
     final display = _showUnreadOnly ? unread : all;
@@ -30,8 +50,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       actions: [
         if (unread.isNotEmpty)
           TextButton(
-            onPressed: () {
-              setState(() => _notificationService.markAllAsRead());
+            onPressed: () async {
+              await _notificationService.markAllAsRead();
+              setState(() {});
             },
             child: const Text(
               'Marcar todas',
@@ -39,82 +60,88 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
           ),
       ],
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimens.spaceLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            LayoutBuilder(builder: (context, constraints) {
-              final count = constraints.maxWidth > 700 ? 3 : 1;
-              final spacing = AppDimens.spaceMd;
-              final w = (constraints.maxWidth - spacing * (count - 1)) / count;
-              return Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() => _loading = true);
+          await _loadData();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppDimens.spaceLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(builder: (context, constraints) {
+                final count = constraints.maxWidth > 700 ? 3 : 1;
+                final spacing = AppDimens.spaceMd;
+                final w = (constraints.maxWidth - spacing * (count - 1)) / count;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Total',
+                        value: '${all.length}',
+                        icon: Icons.notifications,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Sin Leer',
+                        value: '${unread.length}',
+                        icon: Icons.mark_email_unread,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Leídas',
+                        value: '${all.length - unread.length}',
+                        icon: Icons.mark_email_read,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                );
+              }),
+              const SizedBox(height: AppDimens.spaceXl),
+              Row(
                 children: [
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Total',
-                      value: '${all.length}',
-                      icon: Icons.notifications,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Sin Leer',
-                      value: '${unread.length}',
-                      icon: Icons.mark_email_unread,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Leídas',
-                      value: '${all.length - unread.length}',
-                      icon: Icons.mark_email_read,
-                      color: AppColors.success,
-                    ),
-                  ),
+                  _buildFilterChip('Todas', false),
+                  const SizedBox(width: AppDimens.spaceSm),
+                  _buildFilterChip('Sin leer (${unread.length})', true),
                 ],
-              );
-            }),
-            const SizedBox(height: AppDimens.spaceXl),
-            // Filter toggle
-            Row(
-              children: [
-                _buildFilterChip('Todas', false),
-                const SizedBox(width: AppDimens.spaceSm),
-                _buildFilterChip('Sin leer (${unread.length})', true),
-              ],
-            ),
-            const SizedBox(height: AppDimens.spaceLg),
-            if (display.isEmpty)
-              const EmptyState(
-                icon: Icons.notifications_off,
-                title: 'Sin notificaciones',
-                message: 'No tienes notificaciones en esta categoría.',
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: display.length,
-                separatorBuilder: (_, __) => const SizedBox(height: AppDimens.spaceSm),
-                itemBuilder: (_, i) {
-                  final n = display[i];
-                  return NotificationCard(
-                    notification: n,
-                    onTap: () {
-                      setState(() => _notificationService.markAsRead(n.id));
-                    },
-                  );
-                },
               ),
-          ],
+              const SizedBox(height: AppDimens.spaceLg),
+              if (display.isEmpty)
+                const EmptyState(
+                  icon: Icons.notifications_off,
+                  title: 'Sin notificaciones',
+                  message: 'No tienes notificaciones en esta categoría.',
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: display.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: AppDimens.spaceSm),
+                  itemBuilder: (_, i) {
+                    final n = display[i];
+                    return NotificationCard(
+                      notification: n,
+                      onTap: () async {
+                        await _notificationService.markAsRead(n.id);
+                        setState(() {});
+                      },
+                    );
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );

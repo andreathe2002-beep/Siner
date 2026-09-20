@@ -21,6 +21,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   final _taskService = TaskService();
   String _searchQuery = '';
   ProjectStatus? _filterStatus;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await _projectService.refresh();
+    await _taskService.refresh();
+    if (mounted) setState(() => _loading = false);
+  }
 
   List<ProjectModel> get _filteredProjects {
     var projects = _projectService.getAllProjects();
@@ -39,6 +52,14 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return AppScaffold(
+        title: 'Proyectos',
+        currentIndex: 1,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final projects = _filteredProjects;
 
     return AppScaffold(
@@ -50,134 +71,137 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimens.spaceLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search bar
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Buscar proyectos...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 20),
-                        onPressed: () => setState(() => _searchQuery = ''),
-                      )
-                    : null,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() => _loading = true);
+          await _loadData();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppDimens.spaceLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Buscar proyectos...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () => setState(() => _searchQuery = ''),
+                        )
+                      : null,
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
               ),
-              onChanged: (value) => setState(() => _searchQuery = value),
-            ),
-            const SizedBox(height: AppDimens.spaceMd),
-            // Status filter chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildFilterChip('Todos', null),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('Activos', ProjectStatus.active),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('Planificación', ProjectStatus.planning),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('En Pausa', ProjectStatus.onHold),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('Completados', ProjectStatus.completed),
-                ],
+              const SizedBox(height: AppDimens.spaceMd),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildFilterChip('Todos', null),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('Activos', ProjectStatus.active),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('Planificación', ProjectStatus.planning),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('En Pausa', ProjectStatus.onHold),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('Completados', ProjectStatus.completed),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: AppDimens.spaceLg),
-            // Results count
-            Text(
-              '${projects.length} proyecto${projects.length == 1 ? '' : 's'}',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
+              const SizedBox(height: AppDimens.spaceLg),
+              Text(
+                '${projects.length} proyecto${projects.length == 1 ? '' : 's'}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
               ),
-            ),
-            const SizedBox(height: AppDimens.spaceMd),
-            // Projects grid
-            if (projects.isEmpty)
-              const EmptyState(
-                icon: Icons.folder_off,
-                title: 'Sin proyectos',
-                message: 'No se encontraron proyectos con los filtros actuales.',
-                actionLabel: 'Crear Proyecto',
-              )
-            else
-              LayoutBuilder(builder: (context, constraints) {
-                final crossAxisCount = constraints.maxWidth > 700 ? 2 : 1;
-                final spacing = AppDimens.spaceMd;
-                final itemWidth =
-                    (constraints.maxWidth - spacing * (crossAxisCount - 1)) / crossAxisCount;
+              const SizedBox(height: AppDimens.spaceMd),
+              if (projects.isEmpty)
+                const EmptyState(
+                  icon: Icons.folder_off,
+                  title: 'Sin proyectos',
+                  message: 'No se encontraron proyectos con los filtros actuales.',
+                  actionLabel: 'Crear Proyecto',
+                )
+              else
+                LayoutBuilder(builder: (context, constraints) {
+                  final crossAxisCount = constraints.maxWidth > 700 ? 2 : 1;
+                  final spacing = AppDimens.spaceMd;
+                  final itemWidth =
+                      (constraints.maxWidth - spacing * (crossAxisCount - 1)) / crossAxisCount;
 
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: projects.map((p) {
-                    return SizedBox(
-                      width: itemWidth,
-                      child: Dismissible(
-                        key: Key(p.id),
-                        direction: DismissDirection.endToStart,
-                        background: Container(
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20),
-                          decoration: BoxDecoration(
-                            color: AppColors.error,
-                            borderRadius: BorderRadius.circular(AppDimens.radiusL),
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: projects.map((p) {
+                      return SizedBox(
+                        width: itemWidth,
+                        child: Dismissible(
+                          key: Key(p.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
+                              borderRadius: BorderRadius.circular(AppDimens.radiusL),
+                            ),
+                            child: const Icon(Icons.delete, color: Colors.white),
                           ),
-                          child: const Icon(Icons.delete, color: Colors.white),
-                        ),
-                        confirmDismiss: (_) async {
-                          return await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Eliminar proyecto'),
-                              content: Text(
-                                '¿Seguro que quieres eliminar "${p.title}"? '
-                                'Se borrarán también sus tareas y objetivos.',
+                          confirmDismiss: (_) async {
+                            return await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Eliminar proyecto'),
+                                content: Text(
+                                  '¿Seguro que quieres eliminar "${p.title}"? '
+                                  'Se borrarán también sus tareas y objetivos.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                                    child: const Text('Eliminar'),
+                                  ),
+                                ],
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('Cancelar'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                                  child: const Text('Eliminar'),
-                                ),
-                              ],
+                            );
+                          },
+                          onDismissed: (_) async {
+                            await _projectService.deleteProject(p.id);
+                            setState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Proyecto "${p.title}" eliminado'),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          },
+                          child: ProjectCard(
+                            project: p,
+                            memberCount: p.memberIds.length,
+                            taskCount: _taskService.getTasksForProject(p.id).length,
+                            onTap: () => Navigator.pushNamed(
+                              context,
+                              AppRoutes.projectWorkspace,
+                              arguments: p.id,
                             ),
-                          );
-                        },
-                        onDismissed: (_) {
-                          setState(() => _projectService.deleteProject(p.id));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Proyecto "${p.title}" eliminado'),
-                              backgroundColor: AppColors.error,
-                            ),
-                          );
-                        },
-                        child: ProjectCard(
-                          project: p,
-                          memberCount: p.memberIds.length,
-                          taskCount: _taskService.getTasksForProject(p.id).length,
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            AppRoutes.projectWorkspace,
-                            arguments: p.id,
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              }),
-          ],
+                      );
+                    }).toList(),
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );

@@ -26,6 +26,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   DateTime? _endDate;
   ProjectStatus _status = ProjectStatus.planning;
   final _projectService = ProjectService();
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -44,7 +45,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       currentIndex: 1,
       actions: [
         TextButton.icon(
-          onPressed: _submitForm,
+          onPressed: _saving ? null : _submitForm,
           icon: const Icon(Icons.check, color: Colors.white),
           label: const Text(
             'Guardar',
@@ -136,9 +137,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _submitForm,
-                  icon: const Icon(Icons.save),
-                  label: const Text('Crear Proyecto'),
+                  onPressed: _saving ? null : _submitForm,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(_saving ? 'Guardando...' : 'Crear Proyecto'),
                 ),
               ),
             ],
@@ -234,8 +241,10 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     );
   }
 
-  void _submitForm() {
+  Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _saving = true);
 
     final tags = _tagsController.text
         .split(',')
@@ -244,7 +253,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         .toList();
 
     final project = ProjectModel(
-      id: 'p${DateTime.now().millisecondsSinceEpoch}',
+      id: 'temp',
       title: _titleController.text.trim(),
       description: _descriptionController.text.trim(),
       area: _areaController.text.trim().isEmpty ? null : _areaController.text.trim(),
@@ -259,15 +268,16 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       createdAt: DateTime.now(),
     );
 
-    _projectService.addProject(project);
+    await _projectService.addProject(project);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Proyecto "${project.title}" creado'),
-        backgroundColor: AppColors.success,
-      ),
-    );
-
-    Navigator.pushReplacementNamed(context, AppRoutes.projects);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Proyecto "${project.title}" creado'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      Navigator.pushReplacementNamed(context, AppRoutes.projects);
+    }
   }
 }

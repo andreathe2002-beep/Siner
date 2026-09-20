@@ -1,57 +1,133 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/project_model.dart';
 import '../models/objective_model.dart';
+import 'api_client.dart';
 
 class ProjectService {
-  static final List<ProjectModel> _projects = [];
-  static final List<ObjectiveModel> _objectives = [];
+  static const String _resource = '/projects';
 
-  List<ProjectModel> getAllProjects() => List.unmodifiable(_projects);
+  List<ProjectModel> _cache = [];
+  bool _loaded = false;
+
+  Future<List<ProjectModel>> _ensureLoaded() async {
+    if (_loaded) return _cache;
+    await _fetchAll();
+    return _cache;
+  }
+
+  Future<void> _fetchAll() async {
+    final res = await ApiClient.get(_resource);
+    if (res.statusCode == 200) {
+      final list = jsonDecode(res.body) as List;
+      _cache = list.map((j) => _fromApi(j as Map<String, dynamic>)).toList();
+      _loaded = true;
+    } else {
+      _cache = [];
+      _loaded = true;
+    }
+  }
+
+  List<ProjectModel> getAllProjects() => List.unmodifiable(_cache);
 
   ProjectModel? getProjectById(String id) {
     try {
-      return _projects.firstWhere((p) => p.id == id);
+      return _cache.firstWhere((p) => p.id == id);
     } catch (_) {
       return null;
     }
   }
 
   List<ObjectiveModel> getObjectivesForProject(String projectId) {
-    return _objectives.where((o) => o.projectId == projectId).toList();
+    return _objectivesCache.where((o) => o.projectId == projectId).toList();
   }
+
+  final List<ObjectiveModel> _objectivesCache = [];
 
   List<ProjectModel> getProjectsByStatus(ProjectStatus status) {
-    return _projects.where((p) => p.status == status).toList();
+    return _cache.where((p) => p.status == status).toList();
   }
 
-  void addProject(ProjectModel project) {
-    _projects.insert(0, project);
-  }
-
-  void updateProject(ProjectModel project) {
-    final index = _projects.indexWhere((p) => p.id == project.id);
-    if (index != -1) {
-      _projects[index] = project;
+  Future<void> addProject(ProjectModel project) async {
+    final res = await ApiClient.post(_resource, body: _toApi(project));
+    if (res.statusCode == 201) {
+      final created = _fromApi(jsonDecode(res.body) as Map<String, dynamic>);
+      _cache.insert(0, created);
     }
   }
 
-  void deleteProject(String id) {
-    _projects.removeWhere((p) => p.id == id);
-    _objectives.removeWhere((o) => o.projectId == id);
+  Future<void> updateProject(ProjectModel project) async {
+    final res = await ApiClient.put('$_resource/${project.id}', body: _toApi(project));
+    if (res.statusCode == 200) {
+      final updated = _fromApi(jsonDecode(res.body) as Map<String, dynamic>);
+      final idx = _cache.indexWhere((p) => p.id == project.id);
+      if (idx != -1) _cache[idx] = updated;
+    }
   }
 
-  int get totalProjects => _projects.length;
+  Future<void> deleteProject(String id) async {
+    await ApiClient.delete('$_resource/$id');
+    _cache.removeWhere((p) => p.id == id);
+    _objectivesCache.removeWhere((o) => o.projectId == id);
+  }
+
+  int get totalProjects => _cache.length;
 
   int get activeProjects =>
-      _projects.where((p) => p.status == ProjectStatus.active).length;
+      _cache.where((p) => p.status == ProjectStatus.active).length;
 
   double get totalBudget =>
-      _projects.fold(0, (sum, p) => sum + p.budget);
+      _cache.fold(0, (sum, p) => sum + p.budget);
 
   double get totalSpent =>
-      _projects.fold(0, (sum, p) => sum + p.spent);
+      _cache.fold(0, (sum, p) => sum + p.spent);
 
   double get averageProgress {
-    if (_projects.isEmpty) return 0;
-    return _projects.fold(0, (sum, p) => sum + p.progress) / _projects.length;
+    if (_cache.isEmpty) return 0;
+    return _cache.fold(0, (sum, p) => sum + p.progress) / _cache.length;
   }
+
+  Future<void> refresh() async {
+    _loaded = false;
+    await _fetchAll();
+  }
+
+  ProjectModel _fromApi(Map<String, dynamic> j) {
+    return ProjectModel(
+      id: j['_id'] as String? ?? j['id'] as String,
+      title: j['title'] as String,
+      description: j['description'] as String? ?? '',
+      area: j['area'] as String?,
+      status: ProjectStatus.values.firstWhere(
+        (s) => s.name == j['status'],
+        orElse: () => ProjectStatus.planning,
+      ),
+      leadId: j['leadId'] as String? ?? 'u1',
+      memberIds: List<String>.from(j['memberIds'] as List? ?? []),
+      startDate: DateTime.tryParse(j['startDate'] as String? ?? '') ?? DateTime.now(),
+      endDate: j['endDate'] != null
+          ? DateTime.tryParse(j['endDate'] as String)
+          : null,
+      budget: (j['budget'] as num?)?.toDouble() ?? 0,
+      spent: (j['spent'] as num?)?.toDouble() ?? 0,
+      progress: j['progress'] as int? ?? 0,
+      tags: List<String>.from(j['tags'] as List? ?? []),
+      createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> _toApi(ProjectModel p) => {
+        'title': p.title,
+        'description': p.description,
+        'area': p.area,
+        'status': p.status.name,
+        'leadId': p.leadId,
+        'memberIds': p.memberIds,
+        'startDate': p.startDate.toIso8601String(),
+        'endDate': p.endDate?.toIso8601String(),
+        'budget': p.budget,
+        'spent': p.spent,
+        'progress': p.progress,
+        'tags': p.tags,
+      };
 }

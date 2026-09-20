@@ -1,65 +1,131 @@
+import 'dart:convert';
 import '../models/task_model.dart';
+import 'api_client.dart';
 
 class TaskService {
-  static final List<TaskModel> _tasks = [];
+  static const String _resource = '/tasks';
 
-  List<TaskModel> getAllTasks() => List.unmodifiable(_tasks);
+  List<TaskModel> _cache = [];
+  bool _loaded = false;
+
+  Future<void> _ensureLoaded() async {
+    if (_loaded) return;
+    final res = await ApiClient.get(_resource);
+    if (res.statusCode == 200) {
+      final list = jsonDecode(res.body) as List;
+      _cache = list.map((j) => _fromApi(j as Map<String, dynamic>)).toList();
+    }
+    _loaded = true;
+  }
+
+  List<TaskModel> getAllTasks() => List.unmodifiable(_cache);
 
   List<TaskModel> getTasksForProject(String projectId) {
-    return _tasks.where((t) => t.projectId == projectId).toList();
+    return _cache.where((t) => t.projectId == projectId).toList();
   }
 
   List<TaskModel> getTasksByStatus(TaskStatus status) {
-    return _tasks.where((t) => t.status == status).toList();
+    return _cache.where((t) => t.status == status).toList();
   }
 
   List<TaskModel> getTasksByAssignee(String userId) {
-    return _tasks.where((t) => t.assigneeId == userId).toList();
+    return _cache.where((t) => t.assigneeId == userId).toList();
   }
 
   List<TaskModel> getOverdueTasks() {
-    return _tasks.where((t) => t.isOverdue).toList();
+    return _cache.where((t) => t.isOverdue).toList();
   }
 
   List<TaskModel> getUpcomingTasks({int days = 7}) {
     final limit = DateTime.now().add(Duration(days: days));
-    return _tasks.where((t) {
+    return _cache.where((t) {
       if (t.dueDate == null || t.status == TaskStatus.done) return false;
       return t.dueDate!.isBefore(limit);
     }).toList();
   }
 
-  void addTask(TaskModel task) {
-    _tasks.insert(0, task);
-  }
-
-  void updateTask(TaskModel task) {
-    final index = _tasks.indexWhere((t) => t.id == task.id);
-    if (index != -1) {
-      _tasks[index] = task;
+  Future<void> addTask(TaskModel task) async {
+    final res = await ApiClient.post(_resource, body: _toApi(task));
+    if (res.statusCode == 201) {
+      final created = _fromApi(jsonDecode(res.body) as Map<String, dynamic>);
+      _cache.insert(0, created);
     }
   }
 
-  void updateTaskStatus(String taskId, TaskStatus status) {
-    final index = _tasks.indexWhere((t) => t.id == taskId);
-    if (index != -1) {
-      _tasks[index] = _tasks[index].copyWith(status: status);
+  Future<void> updateTask(TaskModel task) async {
+    final res = await ApiClient.put('$_resource/${task.id}', body: _toApi(task));
+    if (res.statusCode == 200) {
+      final updated = _fromApi(jsonDecode(res.body) as Map<String, dynamic>);
+      final idx = _cache.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _cache[idx] = updated;
     }
   }
 
-  void deleteTask(String id) {
-    _tasks.removeWhere((t) => t.id == id);
+  Future<void> updateTaskStatus(String taskId, TaskStatus status) async {
+    final res = await ApiClient.patch('$_resource/$taskId/status', body: {'status': status.name});
+    if (res.statusCode == 200) {
+      final idx = _cache.indexWhere((t) => t.id == taskId);
+      if (idx != -1) {
+        _cache[idx] = _cache[idx].copyWith(status: status);
+      }
+    }
   }
 
-  int get totalTasks => _tasks.length;
+  Future<void> deleteTask(String id) async {
+    await ApiClient.delete('$_resource/$id');
+    _cache.removeWhere((t) => t.id == id);
+  }
+
+  int get totalTasks => _cache.length;
 
   int get completedTasks =>
-      _tasks.where((t) => t.status == TaskStatus.done).length;
+      _cache.where((t) => t.status == TaskStatus.done).length;
 
   int get overdueCount => getOverdueTasks().length;
 
   double get completionRate {
-    if (_tasks.isEmpty) return 0;
-    return completedTasks / _tasks.length * 100;
+    if (_cache.isEmpty) return 0;
+    return completedTasks / _cache.length * 100;
   }
+
+  Future<void> refresh() async {
+    _loaded = false;
+    await _ensureLoaded();
+  }
+
+  TaskModel _fromApi(Map<String, dynamic> j) {
+    return TaskModel(
+      id: j['_id'] as String? ?? j['id'] as String,
+      projectId: j['projectId'] as String,
+      title: j['title'] as String,
+      description: j['description'] as String? ?? '',
+      status: TaskStatus.values.firstWhere(
+        (s) => s.name == j['status'],
+        orElse: () => TaskStatus.todo,
+      ),
+      priority: TaskPriority.values.firstWhere(
+        (p) => p.name == j['priority'],
+        orElse: () => TaskPriority.medium,
+      ),
+      assigneeId: j['assigneeId'] as String?,
+      dueDate: j['dueDate'] != null
+          ? DateTime.tryParse(j['dueDate'] as String)
+          : null,
+      subtasks: List<String>.from(j['subtasks'] as List? ?? []),
+      completedSubtasks: j['completedSubtasks'] as int? ?? 0,
+      createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> _toApi(TaskModel t) => {
+        'projectId': t.projectId,
+        'title': t.title,
+        'description': t.description,
+        'status': t.status.name,
+        'priority': t.priority.name,
+        'assigneeId': t.assigneeId,
+        'dueDate': t.dueDate?.toIso8601String(),
+        'subtasks': t.subtasks,
+        'completedSubtasks': t.completedSubtasks,
+      };
 }

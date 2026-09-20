@@ -22,6 +22,19 @@ class _TasksScreenState extends State<TasksScreen> {
   final _projectService = ProjectService();
   TaskStatus? _filterStatus;
   String _searchQuery = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await _taskService.refresh();
+    await _projectService.refresh();
+    if (mounted) setState(() => _loading = false);
+  }
 
   List<TaskModel> get _filteredTasks {
     var tasks = _taskService.getAllTasks();
@@ -39,6 +52,14 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return AppScaffold(
+        title: 'Tareas',
+        currentIndex: 2,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final tasks = _filteredTasks;
 
     return AppScaffold(
@@ -50,136 +71,141 @@ class _TasksScreenState extends State<TasksScreen> {
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimens.spaceLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Metrics
-            LayoutBuilder(builder: (context, constraints) {
-              final count = constraints.maxWidth > 700 ? 4 : 2;
-              final spacing = AppDimens.spaceMd;
-              final w = (constraints.maxWidth - spacing * (count - 1)) / count;
-              return Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: [
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Total Tareas',
-                      value: '${_taskService.totalTasks}',
-                      icon: Icons.checklist_rtl,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Completadas',
-                      value: '${_taskService.completedTasks}',
-                      icon: Icons.task_alt,
-                      color: AppColors.success,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'En Progreso',
-                      value: '${_taskService.getTasksByStatus(TaskStatus.inProgress).length}',
-                      icon: Icons.pending,
-                      color: AppColors.info,
-                    ),
-                  ),
-                  SizedBox(
-                    width: w,
-                    child: MetricCard(
-                      label: 'Vencidas',
-                      value: '${_taskService.overdueCount}',
-                      icon: Icons.warning_amber,
-                      color: AppColors.error,
-                    ),
-                  ),
-                ],
-              );
-            }),
-            const SizedBox(height: AppDimens.spaceXl),
-            // Search
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Buscar tareas...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 20),
-                        onPressed: () => setState(() => _searchQuery = ''),
-                      )
-                    : null,
-              ),
-              onChanged: (v) => setState(() => _searchQuery = v),
-            ),
-            const SizedBox(height: AppDimens.spaceMd),
-            // Status filters
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildFilterChip('Todas', null),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('Por Hacer', TaskStatus.todo),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('En Progreso', TaskStatus.inProgress),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('En Revisión', TaskStatus.review),
-                  const SizedBox(width: AppDimens.spaceSm),
-                  _buildFilterChip('Completadas', TaskStatus.done),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppDimens.spaceLg),
-            if (tasks.isEmpty)
-              const EmptyState(icon: Icons.checklist_rtl, title: 'Sin tareas')
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: tasks.length,
-                separatorBuilder: (_, __) => const SizedBox(height: AppDimens.spaceSm),
-                itemBuilder: (_, i) {
-                  final t = tasks[i];
-                  final project = _projectService.getProjectById(t.projectId);
-                  return Dismissible(
-                    key: Key(t.id),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      decoration: BoxDecoration(
-                        color: AppColors.error,
-                        borderRadius: BorderRadius.circular(AppDimens.radiusL),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() => _loading = true);
+          await _loadData();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppDimens.spaceLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(builder: (context, constraints) {
+                final count = constraints.maxWidth > 700 ? 4 : 2;
+                final spacing = AppDimens.spaceMd;
+                final w = (constraints.maxWidth - spacing * (count - 1)) / count;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Total Tareas',
+                        value: '${_taskService.totalTasks}',
+                        icon: Icons.checklist_rtl,
+                        color: AppColors.primary,
                       ),
-                      child: const Icon(Icons.delete, color: Colors.white),
                     ),
-                    onDismissed: (_) {
-                      setState(() => _taskService.deleteTask(t.id));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Tarea "${t.title}" eliminada'),
-                          backgroundColor: AppColors.error,
-                        ),
-                      );
-                    },
-                    child: TaskCard(
-                      task: t,
-                      projectTitle: project?.title,
-                      onStatusChanged: (status) {
-                        setState(() => _taskService.updateTaskStatus(t.id, status));
-                      },
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Completadas',
+                        value: '${_taskService.completedTasks}',
+                        icon: Icons.task_alt,
+                        color: AppColors.success,
+                      ),
                     ),
-                  );
-                },
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'En Progreso',
+                        value: '${_taskService.getTasksByStatus(TaskStatus.inProgress).length}',
+                        icon: Icons.pending,
+                        color: AppColors.info,
+                      ),
+                    ),
+                    SizedBox(
+                      width: w,
+                      child: MetricCard(
+                        label: 'Vencidas',
+                        value: '${_taskService.overdueCount}',
+                        icon: Icons.warning_amber,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ],
+                );
+              }),
+              const SizedBox(height: AppDimens.spaceXl),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Buscar tareas...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () => setState(() => _searchQuery = ''),
+                        )
+                      : null,
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
               ),
-          ],
+              const SizedBox(height: AppDimens.spaceMd),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildFilterChip('Todas', null),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('Por Hacer', TaskStatus.todo),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('En Progreso', TaskStatus.inProgress),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('En Revisión', TaskStatus.review),
+                    const SizedBox(width: AppDimens.spaceSm),
+                    _buildFilterChip('Completadas', TaskStatus.done),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppDimens.spaceLg),
+              if (tasks.isEmpty)
+                const EmptyState(icon: Icons.checklist_rtl, title: 'Sin tareas')
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: tasks.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: AppDimens.spaceSm),
+                  itemBuilder: (_, i) {
+                    final t = tasks[i];
+                    final project = _projectService.getProjectById(t.projectId);
+                    return Dismissible(
+                      key: Key(t.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          borderRadius: BorderRadius.circular(AppDimens.radiusL),
+                        ),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+                      onDismissed: (_) async {
+                        await _taskService.deleteTask(t.id);
+                        setState(() {});
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Tarea "${t.title}" eliminada'),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                      },
+                      child: TaskCard(
+                        task: t,
+                        projectTitle: project?.title,
+                        onStatusChanged: (status) async {
+                          await _taskService.updateTaskStatus(t.id, status);
+                          setState(() {});
+                        },
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -307,10 +333,10 @@ class _TasksScreenState extends State<TasksScreen> {
                   child: const Text('Cancelar'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     if (!formKey.currentState!.validate()) return;
                     final task = TaskModel(
-                      id: 't${DateTime.now().millisecondsSinceEpoch}',
+                      id: 'temp',
                       projectId: selectedProjectId,
                       title: titleCtrl.text.trim(),
                       description: descCtrl.text.trim(),
@@ -318,8 +344,8 @@ class _TasksScreenState extends State<TasksScreen> {
                       dueDate: dueDate,
                       createdAt: DateTime.now(),
                     );
-                    _taskService.addTask(task);
-                    Navigator.pop(ctx);
+                    await _taskService.addTask(task);
+                    if (ctx.mounted) Navigator.pop(ctx);
                     setState(() {});
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
